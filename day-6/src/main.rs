@@ -8,15 +8,12 @@ enum Direction {
     LEFT,
 }
 
-fn print(grid: &Vec<Vec<char>>) {
-    grid.iter().for_each(|row| {
-        row.iter().for_each(|c| print!("{c}"));
-        print!("\n");
-    });
-    print!("\n");
+enum SimResult {
+    Loop,
+    Leave(usize),
 }
 
-fn simulate(grid: &mut Vec<Vec<char>>, start: (usize, usize)) -> Option<()> {
+fn simulate(grid: &Vec<Vec<char>>, start: (usize, usize)) -> SimResult {
     let start = (start.0 as isize, start.1 as isize);
     let mut position = start;
     let mut dir = Direction::UP;
@@ -32,33 +29,44 @@ fn simulate(grid: &mut Vec<Vec<char>>, start: (usize, usize)) -> Option<()> {
                 Direction::DOWN => (position.0 + 1, position.1),
                 Direction::LEFT => (position.0, position.1 - 1),
             };
-            if grid
-                .get(new_position.0 as usize)?
-                .get(new_position.1 as usize)?
-                == &'#'
+            match grid
+                .get(new_position.0 as usize)
+                .map(|row| row.get(new_position.1 as usize))
+                .flatten()
             {
-                dir = match dir {
-                    Direction::UP => Direction::RIGHT,
-                    Direction::RIGHT => Direction::DOWN,
-                    Direction::DOWN => Direction::LEFT,
-                    Direction::LEFT => Direction::UP,
-                };
-            } else {
-                grid[position.0 as usize][position.1 as usize] = 'X';
-                position = new_position;
-                break;
-            }
+                None => {
+                    return SimResult::Leave(
+                        prev_positions
+                            .into_iter()
+                            .map(|((y, x), _)| (y, x))
+                            .collect::<HashSet<_>>()
+                            .len(),
+                    )
+                }
+                Some(&'#') => {
+                    dir = match dir {
+                        Direction::UP => Direction::RIGHT,
+                        Direction::RIGHT => Direction::DOWN,
+                        Direction::DOWN => Direction::LEFT,
+                        Direction::LEFT => Direction::UP,
+                    };
+                }
+                Some(_) => {
+                    position = new_position;
+                    break;
+                }
+            };
         }
         if prev_positions.contains(&(position, dir)) {
-            return Some(());
+            return SimResult::Loop;
         }
     }
 }
 
 fn run(input: &str) {
-    let original_grid: Vec<Vec<_>> = input.lines().map(|line| line.chars().collect()).collect();
+    let mut grid: Vec<Vec<_>> = input.lines().map(|line| line.chars().collect()).collect();
 
-    let start_position = original_grid
+    let start_position = grid
         .iter()
         .enumerate()
         .flat_map(|(y, row)| row.iter().enumerate().map(move |(x, c)| (y, x, c)))
@@ -67,25 +75,31 @@ fn run(input: &str) {
         .next()
         .unwrap();
 
-    let mut grid = original_grid.clone();
-    simulate(&mut grid, start_position);
-    let visited = grid
-        .iter()
-        .flat_map(|row| row.iter())
-        .filter(|c| **c == 'X')
-        .count()
-        + 1;
+    let visited = match simulate(&grid, start_position) {
+        SimResult::Leave(visited) => visited,
+        SimResult::Loop => panic!("Default input shouldn't loop"),
+    };
 
     println!("Visited: {visited}");
 
-    let ways = (0..grid.len())
-        .flat_map(|y| (0..grid[0].len()).map(move |x| (y, x)))
-        .filter(|(y, x)| !['#', '^'].contains(&grid[*y][*x]))
-        .filter(|(y, x)| {
-            let mut tmp_grid = original_grid.clone();
-            tmp_grid[*y][*x] = '#';
+    let (rows, columns) = (grid.len(), grid[0].len());
 
-            simulate(&mut tmp_grid, start_position).is_some()
+    let ways = (0..rows)
+        .flat_map(|y| (0..columns).map(move |x| (y, x)))
+        .filter(|(y, x)| !['#', '^'].contains(&grid[*y][*x]))
+        .collect::<Vec<_>>()
+        .into_iter()
+        .filter(|(y, x)| {
+            grid[*y][*x] = '#';
+
+            let tmp_result = match simulate(&grid, start_position) {
+                SimResult::Loop => true,
+                SimResult::Leave(_) => false,
+            };
+
+            grid[*y][*x] = '.';
+
+            tmp_result
         })
         .count();
 
