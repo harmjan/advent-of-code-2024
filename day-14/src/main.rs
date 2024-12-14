@@ -1,11 +1,11 @@
-use std::fs;
+use std::{cmp::max, fs};
 
 use itertools::Itertools;
 
 fn print_grid(grid: &Vec<Vec<bool>>) {
     for y in 0..grid.len() {
         for x in 0..grid[y].len() {
-            let a = if grid[y][x] { ' ' } else { '.' };
+            let a = if grid[y][x] { '.' } else { ' ' };
             print!("{a}");
         }
         print!("\n");
@@ -78,14 +78,32 @@ fn run(input: &str) {
 
     println!("Safety factor part 1: {safety_factor}");
 
-    let steps = 0;
-    let mut grid = vec![vec![false; grid_size.1 as usize]; grid_size.0 as usize];
-    robots.iter().for_each(|robot| {
-        let (y, x) = robot.coords_after(steps, grid_size);
-        grid[y as usize][x as usize] = true;
-    });
-
-    print_grid(&grid);
+    let mut steps = 0;
+    loop {
+        let mut grid = vec![vec![false; grid_size.1 as usize]; grid_size.0 as usize];
+        robots.iter().for_each(|robot| {
+            let (y, x) = robot.coords_after(steps, grid_size);
+            grid[y as usize][x as usize] = true;
+        });
+        let ma = grid
+            .iter()
+            .map(|line| {
+                let (ma, _) = line.iter().fold((0i32, 0i32), |(ma, curr), n| {
+                    let curr = if *n { curr + 1 } else { 0 };
+                    let ma = max(ma, curr);
+                    (ma, curr)
+                });
+                ma
+            })
+            .max()
+            .unwrap();
+        if ma > 10 {
+            println!("Steps with long line in it: {steps}");
+            print_grid(&grid);
+            break;
+        }
+        steps += 1;
+    }
 }
 
 fn main() {
