@@ -1,5 +1,5 @@
 use core::panic;
-use std::fs;
+use std::{collections::BTreeMap, fs};
 
 use itertools::{repeat_n, Itertools};
 
@@ -38,11 +38,30 @@ fn directional_to_coordinates(c: char) -> (usize, usize) {
     }
 }
 
-fn directional_sequence(sequence: &Vec<char>, level: usize) -> Vec<char> {
+fn move_directional(c: char, position: (usize, usize)) -> (usize, usize) {
+    match c {
+        '<' => (position.0, position.1 - 1),
+        '>' => (position.0, position.1 + 1),
+        '^' => (position.0 - 1, position.1),
+        'v' => (position.0 + 1, position.1),
+        _ => panic!(),
+    }
+}
+
+fn directional_sequence(
+    sequence: &Vec<char>,
+    level: usize,
+    cache: &mut BTreeMap<(String, usize), usize>,
+) -> usize {
+    let cache_key = (sequence.iter().collect(), level);
+    if let Some(length) = cache.get(&cache_key) {
+        return *length;
+    }
+
     let mut position = directional_to_coordinates('A');
-    sequence
+    let length = sequence
         .iter()
-        .flat_map(|c| {
+        .map(|c| {
             let target_position = directional_to_coordinates(*c);
 
             let dy = target_position.0 as isize - position.0 as isize;
@@ -51,7 +70,7 @@ fn directional_sequence(sequence: &Vec<char>, level: usize) -> Vec<char> {
             let x_button = if dx >= 0 { '>' } else { '<' };
             let y_button = if dy >= 0 { 'v' } else { '^' };
 
-            let path = repeat_n(x_button, dx.abs() as usize)
+            let path_length = repeat_n(x_button, dx.abs() as usize)
                 .chain(repeat_n(y_button, dy.abs() as usize))
                 .permutations((dx.abs() + dy.abs()) as usize)
                 .unique()
@@ -60,13 +79,7 @@ fn directional_sequence(sequence: &Vec<char>, level: usize) -> Vec<char> {
                     !path
                         .iter()
                         .map(|c| {
-                            position = match c {
-                                '<' => (position.0, position.1 - 1),
-                                '>' => (position.0, position.1 + 1),
-                                '^' => (position.0 - 1, position.1),
-                                'v' => (position.0 + 1, position.1),
-                                _ => panic!(),
-                            };
+                            position = move_directional(*c, position);
                             position
                         })
                         .contains(&(0, 0))
@@ -74,26 +87,34 @@ fn directional_sequence(sequence: &Vec<char>, level: usize) -> Vec<char> {
                 .map(|mut path| {
                     path.push('A');
                     if level == 0 {
-                        path
+                        path.len()
                     } else {
-                        directional_sequence(&path, level - 1)
+                        directional_sequence(&path, level - 1, cache)
                     }
                 })
-                .min_by(|a, b| a.len().cmp(&b.len()))
+                .min()
                 .unwrap();
 
             position = target_position;
 
-            path.into_iter()
+            path_length
         })
-        .collect()
+        .sum();
+
+    cache.insert(cache_key, length);
+
+    length
 }
 
-fn keypad_sequence(sequence: &Vec<char>, directional_level: usize) -> Vec<char> {
+fn keypad_sequence(
+    sequence: &Vec<char>,
+    directional_level: usize,
+    cache: &mut BTreeMap<(String, usize), usize>,
+) -> usize {
     let mut position = keypad_to_coordinates('A');
     sequence
         .iter()
-        .flat_map(|c| {
+        .map(|c| {
             let target_position = keypad_to_coordinates(*c);
 
             let dy = target_position.0 as isize - position.0 as isize;
@@ -102,7 +123,7 @@ fn keypad_sequence(sequence: &Vec<char>, directional_level: usize) -> Vec<char> 
             let x_button = if dx >= 0 { '>' } else { '<' };
             let y_button = if dy >= 0 { 'v' } else { '^' };
 
-            let path = repeat_n(x_button, dx.abs() as usize)
+            let path_length = repeat_n(x_button, dx.abs() as usize)
                 .chain(repeat_n(y_button, dy.abs() as usize))
                 .permutations((dx.abs() + dy.abs()) as usize)
                 .unique()
@@ -111,29 +132,23 @@ fn keypad_sequence(sequence: &Vec<char>, directional_level: usize) -> Vec<char> 
                     !path
                         .iter()
                         .map(|c| {
-                            position = match c {
-                                '<' => (position.0, position.1 - 1),
-                                '>' => (position.0, position.1 + 1),
-                                '^' => (position.0 - 1, position.1),
-                                'v' => (position.0 + 1, position.1),
-                                _ => panic!(),
-                            };
+                            position = move_directional(*c, position);
                             position
                         })
                         .contains(&(3, 0))
                 })
                 .map(|mut path| {
                     path.push('A');
-                    directional_sequence(&path, directional_level)
+                    directional_sequence(&path, directional_level, cache)
                 })
-                .min_by(|a, b| a.len().cmp(&b.len()))
+                .min()
                 .unwrap();
 
             position = target_position;
 
-            path.into_iter()
+            path_length
         })
-        .collect()
+        .sum()
 }
 
 fn run(input: &str) {
@@ -145,17 +160,32 @@ fn run(input: &str) {
     let complexity_sum = codes
         .iter()
         .map(|code| {
-            let my_seq = keypad_sequence(code, 1);
+            let sequence_length = keypad_sequence(code, 1, &mut BTreeMap::new());
             let numeric_part_code = code[..(code.len() - 1)]
                 .into_iter()
                 .collect::<String>()
                 .parse::<usize>()
                 .unwrap();
 
-            my_seq.len() * numeric_part_code
+            sequence_length * numeric_part_code
         })
         .sum::<usize>();
     println!("Sum of complexity codes first historian: {complexity_sum}");
+
+    let complexity_sum = codes
+        .iter()
+        .map(|code| {
+            let sequence_length = keypad_sequence(code, 24, &mut BTreeMap::new());
+            let numeric_part_code = code[..(code.len() - 1)]
+                .into_iter()
+                .collect::<String>()
+                .parse::<usize>()
+                .unwrap();
+
+            sequence_length * numeric_part_code
+        })
+        .sum::<usize>();
+    println!("Sum of complexity codes second historian: {complexity_sum}");
 }
 
 fn main() {
