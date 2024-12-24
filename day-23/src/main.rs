@@ -68,14 +68,17 @@ fn run(input: &str) {
 
     println!("Amount of computers: {}", connections.len());
 
+    let mut banned_set = BTreeSet::new();
     let network = connections
         .iter()
         .map(|(computer, local_connections)| {
-            max_clique(
+            let max_c = max_clique(
                 &connections,
                 BTreeSet::from_iter([*computer]),
-                local_connections.clone(),
-            )
+                local_connections.difference(&banned_set).copied().collect(),
+            );
+            banned_set.insert(computer);
+            max_c
         })
         .max_by_key(|network| network.len())
         .unwrap()
